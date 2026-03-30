@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulazione Formiche e Veleno</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #2c3e50; /* Sfondo scuro per far risaltare il canvas */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .score-board {
+            display: flex;
+            gap: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px 20px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .score-sane { color: #2ecc71; }
+        .score-infette { color: #e74c3c; }
+        .score-morte { color: #95a5a6; }
+
+        canvas {
+            background-color: #faf8f5; /* Colore terriccio chiaro */
+            border: 3px solid #ecf0f1;
+            border-radius: 4px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Simulazione Contagio Formicaio</h1>
+        <div class="score-board">
+            <span class="score-sane" id="stat-sane">Sane: 0</span>
+            <span class="score-infette" id="stat-infette">Infette: 0</span>
+            <span class="score-morte" id="stat-morte">Morte: 0</span>
+        </div>
+    </div>
+
+    <canvas id="antCanvas" width="800" height="500"></canvas>
+
+    <script>
+        // === SETUP BASE ===
+        const canvas = document.getElementById("antCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // Elementi DOM per lo score
+        const elSane = document.getElementById("stat-sane");
+        const elInfette = document.getElementById("stat-infette");
+        const elMorte = document.getElementById("stat-morte");
+
+        // === PARAMETRI ===
+        const ANT_COUNT = 150; 
+        const BAIT = { x: 650, y: 350, r: 35 };
+        const NEST = { x: 150, y: 150, r: 40 };
+
+        const DEATH_DELAY = 400; // Frame di agonia prima di morire
+        const INFECTION_RADIUS = 10; // Distanza minima per il contagio
+        const INFECTION_CHANCE = 0.05; // Probabilità di contagio al contatto
+
+        // === FORMICA ===
+        class Ant {
+            constructor() {
+                this.x = NEST.x + (Math.random() - 0.5) * 20;
+                this.y = NEST.y + (Math.random() - 0.5) * 20;
+                
+                // Movimento tramite angoli per un effetto organico
+                this.angle = Math.random() * Math.PI * 2;
+                this.speed = 1.5 + Math.random() * 0.5;
+
+                this.state = "searching"; 
+                this.poisonTimer = 0;
+            }
+
+            update() {
+                if (this.state === "dead") return;
+
+                // --- COMPORTAMENTO DEGLI STATI ---
+                if (this.state === "poisoned") {
+                    this.poisonTimer++;
+                    this.speed = 0.5; // Rallenta barcollando
+                    this.angle += (Math.random() - 0.5) * 1.0; // Spasmi erratici
+                    
+                    if (this.poisonTimer > DEATH_DELAY) {
+                        this.state = "dead";
+                        return;
+                    }
+                } 
+                else if (this.state === "searching") {
+                    this.angle += (Math.random() - 0.5) * 0.4; // Sterzata fluida
+                    
+                    // Trova l'esca
+                    if (Math.hypot(this.x - BAIT.x, this.y - BAIT.y) < BAIT.r) {
+                        this.state = "returning";
+                        this.angle += Math.PI; // Inverte la marcia
+                    }
+                } 
+                else if (this.state === "returning") {
+                    // Punta verso il nido aggiungendo una leggera deviazione naturale
+                    const angleToNest = Math.atan2(NEST.y - this.y, NEST.x - this.x);
+                    this.angle = angleToNest + (Math.random() - 0.5) * 0.5;
+
+                    // Arriva al nido
+                    if (Math.hypot(this.x - NEST.x, this.y - NEST.y) < NEST.r) {
+                        this.state = "poisoned"; // Porta il veleno nel nido e si ammala
+                    }
+                }
+
+                // --- MOVIMENTO FISICO ---
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+
+                // --- RIMBALZO SUI BORDI ---
+                if (this.x < 0 || this.x > canvas.width) {
+                    this.angle = Math.PI - this.angle;
+                    this.x = Math.max(0, Math.min(this.x, canvas.width));
+                }
+                if (this.y < 0 || this.y > canvas.height) {
+                    this.angle = -this.angle;
+                    this.y = Math.max(0, Math.min(this.y, canvas.height));
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle); // Ruota in direzione della marcia
+
+                if (this.state === "dead") {
+                    ctx.fillStyle = "rgba(150, 150, 150, 0.5)"; // Carcassa sbiadita
+                } else if (this.state === "searching" || this.state === "returning") {
+                    ctx.fillStyle = "black";
+                } else if (this.state === "poisoned") {
+                    ctx.fillStyle = "#e74c3c"; // Rosso acceso
+                }
+
+                // Corpo ovale della formica
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 3, 1.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Dettaglio: disegna il pezzetto di esca in bocca se sta tornando
+                if (this.state === "returning") {
+                    ctx.fillStyle = "#2ecc71";
+                    ctx.beginPath();
+                    ctx.arc(3, 0, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // === CREA FORMICHE ===
+        const ants = Array.from({ length: ANT_COUNT }, () => new Ant());
+
+        // === LOOP PRINCIPALE ===
+        function loop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Disegna nido
+            ctx.fillStyle = "#8B4513"; // Marrone
+            ctx.beginPath();
+            ctx.arc(NEST.x, NEST.y, NEST.r, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Etichetta Nido
+            ctx.fillStyle = "white";
+            ctx.font = "bold 12px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("NIDO", NEST.x, NEST.y);
+
+            // 2. Disegna esca avvelenata
+            ctx.fillStyle = "#27ae60"; // Verde
+            ctx.beginPath();
+            ctx.arc(BAIT.x, BAIT.y, BAIT.r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Etichetta Esca
+            ctx.fillStyle = "white";
+            ctx.fillText("ESCA VELENO", BAIT.x, BAIT.y);
+
+            // 3. Aggiorna posizioni
+            ants.forEach(a => a.update());
+
+            // 4. PROPAGAZIONE REALE DEL VELENO (Per Prossimità)
+            for (let i = 0; i < ants.length; i++) {
+                if (ants[i].state === "poisoned") {
+                    for (let j = 0; j < ants.length; j++) {
+                        // Se una infetta tocca una sana
+                        if (i !== j && (ants[j].state === "searching" || ants[j].state === "returning")) {
+                            const dist = Math.hypot(ants[i].x - ants[j].x, ants[i].y - ants[j].y);
+                            
+                            if (dist < INFECTION_RADIUS && Math.random() < INFECTION_CHANCE) {
+                                ants[j].state = "poisoned";
+                                ants[j].poisonTimer = 0;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 5. Disegna formiche (prima le morte sul fondo, poi le vive sopra)
+            ants.filter(a => a.state === "dead").forEach(a => a.draw());
+            ants.filter(a => a.state !== "dead").forEach(a => a.draw());
+
+            // 6. Aggiorna UI Score
+            const saneCount = ants.filter(a => a.state === "searching" || a.state === "returning").length;
+            const infectedCount = ants.filter(a => a.state === "poisoned").length;
+            const deadCount = ants.filter(a => a.state === "dead").length;
+
+            elSane.textContent = `Sane: ${saneCount}`;
+            elInfette.textContent = `Infette: ${infectedCount}`;
+            elMorte.textContent = `Morte: ${deadCount}`;
+
+            // Richiama il prossimo frame
+            requestAnimationFrame(loop);
+        }
+
+        // AVVIO AUTOMATICO
+        loop();
+    </script>
+</body>
+</html>
